@@ -19,12 +19,12 @@ import { statSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import type { Model } from "@earendil-works/pi-ai";
 import type { AgentSession, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { resumeAgent, runAgent, type ToolActivity } from "./agent-runner.js";
+import { resolveEffectiveMaxTurns, resumeAgent, runAgent, type ToolActivity } from "./agent-runner.js";
 import { getAgentConfig } from "./agent-types.js";
 import { getForcedSubagentModel } from "./forced-model.js";
 import { assignHandle, handleBase } from "./mention.js";
 import { describeModel, resolveModel } from "./model-resolver.js";
-import type { AgentInvocation, AgentRecord, AgentTombstone, IsolationMode, MentionResolution, SubagentType, ThinkingLevel } from "./types.js";
+import type { AgentInvocation, AgentRecord, AgentTombstone, IsolationMode, MentionResolution, SubagentType, ThinkingLevel, TurnBudgetExtensionResult } from "./types.js";
 import { addUsage, type LifetimeUsage } from "./usage.js";
 import type { CompiledSchema } from "./workflow/json-schema.js";
 import { cleanupWorktree, createWorktree, isWorktreeIsolationEnabled, pruneWorktrees, } from "./worktree.js";
@@ -372,6 +372,10 @@ interface ResumeOptions {
   onAssistantUsage?: (usage: { input: number; output: number; cacheWrite: number }) => void;
   /** Called when the session successfully compacts. */
   onCompaction?: (info: CompactionInfo) => void;
+  /** Per-resume turn ceiling. Omitted resolves from the agent/project defaults. */
+  maxTurns?: number;
+  /** Called after each turn of this resumed run. */
+  onTurnEnd?: (turnCount: number) => void;
   /**
    * Background resume only: called synchronously when the run actually starts —
    * immediately, or later from drainQueue. Callers wire per-run side effects
@@ -843,6 +847,7 @@ export class AgentManager {
         options.onToolActivity?.(activity);
       },
       onTurnEnd: options.onTurnEnd,
+      onTurnBudgetCreated: (controller) => { record.turnBudget = controller; },
       onTextDelta: options.onTextDelta,
       onAssistantUsage: (usage) => {
         addUsage(record.lifetimeUsage, usage);
@@ -1023,6 +1028,7 @@ export class AgentManager {
    *   the release disagree with the acquire.
    */
   private settleRun(record: AgentRecord, guardCallback: boolean, pool: Pool | undefined): void {
+    record.turnBudget = undefined;
     if (!record.isBackground) record.resultConsumed = true;
     if (pool === "background") this.runningBackground--;
     else if (pool === "foreground") this.runningForeground--;
@@ -1231,7 +1237,7 @@ export class AgentManager {
     record.error = undefined;
 
     try {
-      const { text, failure } = await resumeAgent(record.session, prompt, {
+      const { text, failure, aborted, steered } = await resumeAgent(record.session, prompt, {
         onToolActivity: (activity) => {
           if (activity.type === "end") record.toolUses++;
           options?.onToolActivity?.(activity);
@@ -1246,11 +1252,14 @@ export class AgentManager {
           this.onCompact?.(record, info);
           options?.onCompaction?.(info);
         },
+        onTurnEnd: options?.onTurnEnd,
+        onTurnBudgetCreated: (controller) => { record.turnBudget = controller; },
+        maxTurns: resolveEffectiveMaxTurns(record.type, options?.maxTurns),
         signal,
       });
-      // Same contract as the spawn path (#144): a failed final turn is an
-      // error, not a completion — but the resumed text stays available.
-      record.status = failure ? "error" : "completed";
+      // Same precedence as a fresh spawn: hard abort, final-turn failure,
+      // graceful soft-limit wrap, ordinary completion.
+      record.status = aborted ? "aborted" : failure ? "error" : steered ? "steered" : "completed";
       if (failure) record.error = failure;
       record.result = text;
       record.completedAt = Date.now();
@@ -1260,6 +1269,7 @@ export class AgentManager {
       record.completedAt = Date.now();
     }
 
+    record.turnBudget = undefined;
     // Same contract as the spawn settle paths: children spawned during the
     // resumed turn must not outlive it — nothing else can see or reach them.
     this.abortOwnedChildren(id);
@@ -1308,6 +1318,7 @@ export class AgentManager {
     try { options.onStarted?.(); } catch { /* ignore caller wiring errors */ }
 
     const settle = () => {
+      record.turnBudget = undefined;
       detachParentSignal?.();
       detachParentSignal = undefined;
       // Final flush of streaming output file
@@ -1337,14 +1348,15 @@ export class AgentManager {
         this.onCompact?.(record, info);
         options.onCompaction?.(info);
       },
+      onTurnEnd: options.onTurnEnd,
+      onTurnBudgetCreated: (controller) => { record.turnBudget = controller; },
+      maxTurns: resolveEffectiveMaxTurns(record.type, options.maxTurns),
       signal: abortController.signal,
     })
-      .then(({ text, failure }) => {
+      .then(({ text, failure, aborted, steered }) => {
         // Don't overwrite status if externally stopped via abort().
         if (record.status !== "stopped") {
-          // Same contract as the spawn path (#144): a failed final turn is an
-          // error, not a completion — but the resumed text stays available.
-          record.status = failure ? "error" : "completed";
+          record.status = aborted ? "aborted" : failure ? "error" : steered ? "steered" : "completed";
           if (failure) record.error = failure;
         }
         record.result = text;
@@ -1363,6 +1375,18 @@ export class AgentManager {
       });
 
     record.promise = promise;
+  }
+
+  /** Extend one running agent's existing ceiling without resetting spent turns. */
+  extendTurnBudget(id: string, additionalTurns: number): TurnBudgetExtensionResult | undefined {
+    const record = this.agents.get(id);
+    if (!record || record.status !== "running" || !record.turnBudget) return undefined;
+    const result = record.turnBudget.extend(additionalTurns);
+    if (result.extended) {
+      record.invocation ??= {};
+      record.invocation.maxTurns = result.maxTurns;
+    }
+    return result;
   }
 
   /**
