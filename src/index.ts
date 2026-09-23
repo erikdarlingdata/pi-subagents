@@ -1654,6 +1654,11 @@ Terse command-style prompts produce shallow, generic work.
           description: "If true, fork parent conversation into the agent. Default: false (fresh context).",
         }),
       ),
+      cwd: Type.Optional(
+        Type.String({
+          description: "Absolute path of the directory the agent runs in (default: this session's cwd). With isolation: \"worktree\", the worktree is made from the git repo at this path, so a session outside a repo can still dispatch an isolated lane.",
+        }),
+      ),
       ...isolationParam(isWorktreeIsolationEnabled()),
       ...scheduleParam,
     }),
@@ -2076,6 +2081,7 @@ Terse command-style prompts produce shallow, generic work.
           thinkingLevel: thinking,
           isBackground: true,
           isolation,
+          cwd: params.cwd as string | undefined,
           invocation: agentInvocation,
           rootSessionId: ctx.sessionManager.getSessionId(),
           ...bgCallbacks,
@@ -2229,6 +2235,7 @@ Terse command-style prompts produce shallow, generic work.
           inheritContext,
           thinkingLevel: thinking,
           isolation,
+          cwd: params.cwd as string | undefined,
           invocation: agentInvocation,
           signal,
           rootSessionId: ctx.sessionManager.getSessionId(),
