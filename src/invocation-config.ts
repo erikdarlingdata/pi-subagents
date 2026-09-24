@@ -123,10 +123,11 @@ export function resolveAgentInvocationConfig(
   const requested = agentConfig?.isolation ?? params.isolation;
   const isolation = requested === "worktree" && opts?.worktreeAllowed !== false ? "worktree" : undefined;
 
-  const overriddenThinking = agentConfig?.thinking != null && params.thinking != null
-    && agentConfig.thinking !== params.thinking
-    ? params.thinking as ThinkingLevel
-    : undefined;
+  // Thinking is the one "locked" field a caller may override (local fork, Erik 2026-09-24): the agent file's
+  // `thinking:` is the DEFAULT, and a coordinator picks the level each task needs. A forgotten caller value
+  // still gets the file's safe default instead of the session's (often xhigh) level. Model, turns, isolation
+  // and the rest keep the agent file authoritative.
+  const overriddenThinking: ThinkingLevel | undefined = undefined;
   const overriddenModel = agentConfig?.model != null && params.model != null
     && agentConfig.model !== params.model
     ? params.model
@@ -135,7 +136,7 @@ export function resolveAgentInvocationConfig(
   return {
     modelInput: agentConfig?.model ?? params.model,
     modelFromParams: agentConfig?.model == null && params.model != null,
-    thinking: (agentConfig?.thinking ?? params.thinking) as ThinkingLevel | undefined,
+    thinking: (params.thinking ?? agentConfig?.thinking) as ThinkingLevel | undefined,
     maxTurns: agentConfig?.maxTurns ?? params.max_turns,
     inheritContext: agentConfig?.inheritContext ?? params.inherit_context ?? false,
     runInBackground: agentConfig?.runInBackground ?? params.run_in_background ?? opts?.defaultRunInBackground ?? false,

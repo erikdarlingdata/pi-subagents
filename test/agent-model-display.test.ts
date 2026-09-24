@@ -216,7 +216,7 @@ describe("Agent tool result — effective model", () => {
   // exists. That is the only place the two causes of a mismatch are separable:
   // a clamp cannot have happened yet, so "(asked max)" here can only come from
   // the agent file outranking the parameter.
-  it("discloses a level an agent file pinned over the caller's (#182)", async () => {
+  it("lets the caller's thinking win over an agent file's default (local fork)", async () => {
     pinnedAgent("thinking: low\n");
     const tool = agentTool();
     vi.mocked(runAgent).mockImplementation(() => new Promise(() => {}) as never);
@@ -229,7 +229,7 @@ describe("Agent tool result — effective model", () => {
       ctx(),
     );
 
-    expect(result.details.tags).toContain("thinking: low (asked max)");
+    expect(result.details.tags).toContain("thinking: max");
   });
 
   it("discloses a model an agent file pinned over the caller's (#182)", async () => {

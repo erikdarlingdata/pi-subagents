@@ -43,7 +43,8 @@ describe("resolveAgentInvocationConfig", () => {
 
     expect(resolved.modelInput).toBe("provider/config-model");
     expect(resolved.modelFromParams).toBe(false);
-    expect(resolved.thinking).toBe("high");
+    // Thinking is caller-overridable in this fork: the agent file's value is only the default.
+    expect(resolved.thinking).toBe("minimal");
     expect(resolved.maxTurns).toBe(42);
     expect(resolved.inheritContext).toBe(false);
     expect(resolved.runInBackground).toBe(false);
@@ -156,7 +157,8 @@ describe("resolveAgentInvocationConfig — overridden params (#182)", () => {
       { model: "provider/param-model", thinking: "max" },
     );
 
-    expect(resolved.overridden).toEqual({ thinking: "max", model: "provider/param-model" });
+    // Thinking is caller-overridable in this fork, so only the model outranking is recorded.
+    expect(resolved.overridden).toEqual({ thinking: undefined, model: "provider/param-model" });
   });
 
   it("records nothing when the caller got what they asked for", () => {
@@ -182,12 +184,17 @@ describe("resolveAgentInvocationConfig — overridden params (#182)", () => {
     ).overridden).toBeUndefined();
   });
 
-  it("records each field independently", () => {
+  it("lets the caller's thinking win over the agent file's default, recording no override", () => {
     const resolved = resolveAgentInvocationConfig(
       makeConfig({ thinking: "low" }),
       { model: "provider/param-model", thinking: "max" },
     );
 
-    expect(resolved.overridden).toEqual({ thinking: "max", model: undefined });
+    expect(resolved.thinking).toBe("max");
+    expect(resolved.overridden).toBeUndefined();
+  });
+
+  it("falls back to the agent file's thinking when the caller names none", () => {
+    expect(resolveAgentInvocationConfig(makeConfig({ thinking: "medium" }), {}).thinking).toBe("medium");
   });
 });
