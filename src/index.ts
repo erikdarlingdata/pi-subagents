@@ -663,27 +663,25 @@ export default function (pi: ExtensionAPI) {
     // has clamped the level to the model (see `onSessionCreated`).
     const reported = toReportedUsage(usage);
     if (!reported) return;
-    try {
-      pi.events.emit("subagents:usage", {
-        id: record.id,
-        type: record.type,
-        description: record.description,
-        model: record.invocation?.modelId,
-        thinking: record.invocation?.thinking,
-        // Set only when the caller did not get the level it asked for (pi
-        // clamped it to the model, or an agent file outranked it), so a ledger
-        // can show `low (asked minimal)` instead of silently relabelling.
-        requestedThinking: record.invocation?.requestedThinking,
-        depth: record.depth ?? 1,
-        parentAgentId: record.parentAgentId,
-        workflowId: record.workflowId,
-        usage: reported,
-      });
-    } catch {
-      // A stale runtime after session replacement throws on emit. This runs
-      // inside the child's `message_end`, so throwing would hurt the agent to
-      // protect a display; drop the event instead.
-    }
+    // A key whose value is unknown is omitted, never `undefined`: `model` and
+    // `thinking` until the session has reported them, `parentAgentId` and
+    // `workflowId` on a top-level agent.
+    const invocation = record.invocation;
+    pi.events.emit("subagents:usage", {
+      id: record.id,
+      type: record.type,
+      description: record.description,
+      ...(invocation?.modelId !== undefined ? { model: invocation.modelId } : {}),
+      ...(invocation?.thinking !== undefined ? { thinking: invocation.thinking } : {}),
+      // Set only when the caller did not get the level it asked for (pi
+      // clamped it to the model, or an agent file outranked it), so a ledger
+      // can show `low (asked minimal)` instead of silently relabelling.
+      ...(invocation?.requestedThinking !== undefined ? { requestedThinking: invocation.requestedThinking } : {}),
+      depth: record.depth ?? 1,
+      ...(record.parentAgentId !== undefined ? { parentAgentId: record.parentAgentId } : {}),
+      ...(record.workflowId !== undefined ? { workflowId: record.workflowId } : {}),
+      usage: reported,
+    });
   });
 
   // Expose manager via Symbol.for() global registry for cross-package access.
@@ -1184,12 +1182,9 @@ export default function (pi: ExtensionAPI) {
     // `subagents:usage` can arrive. A ledger flushing in its own
     // `session_shutdown` may have run before this handler aborted the agents
     // (handlers run in load order) and missed their last messages; this is the
-    // point after which a final flush is complete.
-    try {
-      pi.events.emit("subagents:disposed", {});
-    } catch {
-      // Stale runtime: nobody is left to hear it.
-    }
+    // point after which a synchronous final flush is complete. Synchronous:
+    // `emit` does not await listeners, and pi exits once this handler returns.
+    pi.events.emit("subagents:disposed", {});
   });
 
   // Live widget: show running agents above editor.
