@@ -26,6 +26,7 @@ import { buildMemoryBlock, buildReadOnlyMemoryBlock } from "./memory.js";
 import { createNestedSubagentTools, getMaxSubagentDepth, type NestedAgentManager } from "./nested-tools.js";
 import { buildAgentPrompt, type PromptExtras } from "./prompts.js";
 import { preloadSkills } from "./skill-loader.js";
+import { getStrictAgentModels, unavailableAgentModelMessage } from "./strict-models.js";
 import { createStructuredCapture, createStructuredOutputTool, structuredRetryPrompt } from "./structured-output.js";
 import type { SubagentType, ThinkingLevel, TurnBudgetController } from "./types.js";
 import type { LifetimeUsage } from "./usage.js";
@@ -366,6 +367,7 @@ export function resolveDefaultModel(
   parentModel: Model<any> | undefined,
   registry: { find(provider: string, modelId: string): Model<any> | undefined; getAvailable?(): Model<any>[] },
   configModel?: string,
+  strict = false,
 ): Model<any> | undefined {
   if (configModel) {
     const slashIdx = configModel.indexOf("/");
@@ -384,6 +386,7 @@ export function resolveDefaultModel(
       const found = registry.find(provider, modelId);
       if (found && isAvailable(provider, modelId)) return found;
     }
+    if (strict) throw new Error(unavailableAgentModelMessage(configModel, parentModel));
   }
 
   return parentModel;
@@ -882,7 +885,7 @@ export async function runAgent(
 
   // Resolve model: explicit option > config.model > parent model
   const model = options.model ?? resolveDefaultModel(
-    ctx.model, ctx.modelRegistry, agentConfig?.model,
+    ctx.model, ctx.modelRegistry, agentConfig?.model, getStrictAgentModels(),
   );
 
   // Resolve thinking level: explicit option > agent config > undefined (inherit)

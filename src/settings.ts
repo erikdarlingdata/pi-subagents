@@ -113,6 +113,13 @@ export interface SubagentsSettings {
    */
   strictAgentFiles?: boolean;
   /**
+   * When true, an agent file whose `model:` is not an available model fails the
+   * spawn with an error naming the model. When false (the default), the agent
+   * silently runs on the parent's model instead, so a typo or a model missing
+   * from the catalog shows up only as an unexpected model and cost.
+   */
+  strictAgentModels?: boolean;
+  /**
    * When true, the three built-in default agents (general-purpose, Explore, Plan)
    * are not registered at startup. User-defined agents from project/global custom
    * agent dirs are completely unaffected — only the hardcoded DEFAULT_AGENTS are suppressed.
@@ -330,6 +337,7 @@ export interface SettingsAppliers {
   setScopeModels: (enabled: boolean) => void;
   setForceSubagentModel: (model: string | undefined) => void;
   setStrictAgentFiles: (b: boolean) => void;
+  setStrictAgentModels?: (b: boolean) => void;
   setDisableDefaultAgents: (b: boolean) => void;
   setToolDescriptionMode: (mode: ToolDescriptionMode) => void;
   setFleetView: (b: boolean) => void;
@@ -425,6 +433,9 @@ function sanitize(raw: unknown): SubagentsSettings {
   }
   if (typeof r.strictAgentFiles === "boolean") {
     out.strictAgentFiles = r.strictAgentFiles;
+  }
+  if (typeof r.strictAgentModels === "boolean") {
+    out.strictAgentModels = r.strictAgentModels;
   }
   if (typeof r.disableDefaultAgents === "boolean") {
     out.disableDefaultAgents = r.disableDefaultAgents;
@@ -544,6 +555,7 @@ export function applySettings(s: SubagentsSettings, appliers: SettingsAppliers):
   if (typeof s.forceSubagentModel === "string") appliers.setForceSubagentModel(s.forceSubagentModel);
   else if (s.forceSubagentModel === false) appliers.setForceSubagentModel(undefined);
   if (typeof s.strictAgentFiles === "boolean") appliers.setStrictAgentFiles(s.strictAgentFiles);
+  if (typeof s.strictAgentModels === "boolean") appliers.setStrictAgentModels?.(s.strictAgentModels);
   if (typeof s.disableDefaultAgents === "boolean") appliers.setDisableDefaultAgents(s.disableDefaultAgents);
   if (s.toolDescriptionMode) appliers.setToolDescriptionMode(s.toolDescriptionMode);
   if (typeof s.fleetView === "boolean") appliers.setFleetView(s.fleetView);

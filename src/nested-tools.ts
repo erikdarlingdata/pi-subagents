@@ -26,6 +26,7 @@ import {
   writeInitialEntry,
 } from "./output-file.js";
 import { getForegroundOutcomeNote, getStatusNote, partialOutputSuffix } from "./status-note.js";
+import { getStrictAgentModels, unavailableAgentModelMessage } from "./strict-models.js";
 import type {
   AgentConfig,
   AgentInvocation,
@@ -233,6 +234,7 @@ export function createNestedSubagentTools(context: NestedToolContext): ToolDefin
         const resolvedModel = resolveModel(invocation.modelInput, ctx.modelRegistry);
         if (typeof resolvedModel === "string") {
           if (invocation.modelFromParams) return textResult(resolvedModel, true);
+          if (getStrictAgentModels()) return textResult(unavailableAgentModelMessage(invocation.modelInput, ctx.model), true);
         } else {
           model = resolvedModel;
         }

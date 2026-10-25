@@ -410,6 +410,13 @@ describe("settings persistence", () => {
       expect(loadSettings(projectDir)).toEqual({ strictAgentFiles: false });
     });
 
+    it("accepts strictAgentModels boolean and drops a non-boolean", () => {
+      writeProject({ strictAgentModels: true });
+      expect(loadSettings(projectDir)).toEqual({ strictAgentModels: true });
+      writeProject({ strictAgentModels: "yes" });
+      expect(loadSettings(projectDir)).toEqual({});
+    });
+
     it("drops non-boolean strictAgentFiles", () => {
       writeProject({ strictAgentFiles: "yes" });
       expect(loadSettings(projectDir).strictAgentFiles).toBeUndefined();
@@ -686,6 +693,14 @@ describe("settings persistence", () => {
       expect(appliers.setStrictAgentFiles).toHaveBeenCalledWith(true);
       applySettings({}, appliers);
       expect(appliers.setStrictAgentFiles).toHaveBeenCalledTimes(1);
+    });
+
+    it("applies strictAgentModels; skips it when absent", () => {
+      const setStrictAgentModels = vi.fn();
+      applySettings({ strictAgentModels: true }, { ...appliers, setStrictAgentModels });
+      expect(setStrictAgentModels).toHaveBeenCalledWith(true);
+      applySettings({}, { ...appliers, setStrictAgentModels });
+      expect(setStrictAgentModels).toHaveBeenCalledTimes(1);
     });
 
     it("applies widgetMode; skips it when absent", () => {

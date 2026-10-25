@@ -37,6 +37,7 @@ import { SubagentScheduler } from "./schedule.js";
 import { resolveStorePath, ScheduleStore } from "./schedule-store.js";
 import { applyAndEmitLoaded, loadSettings, type SubagentsSettings, saveAndEmitChanged, type ToolDescriptionMode } from "./settings.js";
 import { getForegroundOutcomeNote, getStatusNote, partialOutputSuffix } from "./status-note.js";
+import { getStrictAgentModels, setStrictAgentModels, unavailableAgentModelMessage } from "./strict-models.js";
 import { type AgentConfig, type AgentInvocation, type AgentMentionMode, type AgentRecord, type JoinMode, type NotificationDetails, type SubagentType, type TurnBudgetExtensionResult, type ViewerMarkdownMode, type WidgetMode } from "./types.js";
 import { createMentionProvider, mentionRoster, type TypeInfo } from "./ui/agent-mention.js";
 import {
@@ -1464,6 +1465,7 @@ export default function (pi: ExtensionAPI) {
       setScopeModels: setScopeModelsEnabled,
       setForceSubagentModel: setForcedSubagentModel,
       setStrictAgentFiles: (b) => { strictAgentFiles = b; },
+      setStrictAgentModels,
       setDisableDefaultAgents: setDisableDefaultAgents,
       setToolDescriptionMode: setToolDescriptionMode,
       setFleetView: setFleetViewEnabled,
@@ -1875,7 +1877,8 @@ Terse command-style prompts produce shallow, generic work.
         const resolved = resolveModel(resolvedConfig.modelInput, ctx.modelRegistry);
         if (typeof resolved === "string") {
           if (resolvedConfig.modelFromParams) return textResult(resolved);
-          // config-specified: silent fallback to parent
+          if (getStrictAgentModels()) return textResult(unavailableAgentModelMessage(resolvedConfig.modelInput, ctx.model));
+          // config-specified: silent fallback to parent (unless strictAgentModels)
         } else {
           model = resolved;
         }
@@ -3622,6 +3625,7 @@ Write the file using the write tool. Only write the file, nothing else.`;
       showCost: isShowCostEnabled(),
       showModel: isShowModelEnabled(),
       viewerMarkdown: getViewerMarkdown(),
+      strictAgentModels: getStrictAgentModels(),
     } satisfies SubagentsSettings;
   }
 

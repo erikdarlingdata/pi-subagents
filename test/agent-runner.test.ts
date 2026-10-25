@@ -2733,4 +2733,30 @@ describe("resolveDefaultModel", () => {
   it("returns undefined when neither a config model nor a parent model exists", () => {
     expect(resolveDefaultModel(undefined, registry([haiku]), undefined)).toBeUndefined();
   });
+
+  describe("strict (strictAgentModels)", () => {
+    it("throws, naming the model and the parent, when the model is not available", () => {
+      const r = registry([haiku]);
+      expect(() => resolveDefaultModel(parent, r, "openai/gpt-5", true))
+        .toThrow(/"openai\/gpt-5" is not an available model.*anthropic\/parent-model/);
+    });
+
+    it("throws when the registry cannot find the model", () => {
+      const r = { find: vi.fn(() => undefined), getAvailable: undefined };
+      expect(() => resolveDefaultModel(parent, r as any, "anthropic/nope", true)).toThrow(/anthropic\/nope/);
+    });
+
+    it("throws for a model string with no provider prefix", () => {
+      expect(() => resolveDefaultModel(parent, registry([haiku]), "haiku", true)).toThrow(/"haiku"/);
+    });
+
+    it("still returns an available configured model", () => {
+      expect(resolveDefaultModel(parent, registry([haiku]), "anthropic/claude-haiku-4-5", true))
+        .toEqual({ provider: "anthropic", id: "claude-haiku-4-5" });
+    });
+
+    it("still returns the parent when no model is configured", () => {
+      expect(resolveDefaultModel(parent, registry([haiku]), undefined, true)).toBe(parent);
+    });
+  });
 });
